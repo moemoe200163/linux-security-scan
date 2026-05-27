@@ -407,73 +407,61 @@ generate_report() {
         echo "--- 最近登入記錄 (lastlog) ---"
         lastlog | tail -20 2>/dev/null || echo "無法讀取"
         echo ""
-        echo "--- SSH 登入嘗試 ---"
-        if [[ -f /var/log/auth.log ]]; then
-            AUTH_LOG="/var/log/auth.log"
-        elif [[ -f /var/log/secure ]]; then
-            AUTH_LOG="/var/log/secure"
-        else
-            AUTH_LOG=""
-        fi
+        echo "--- SSH 暴力破解統計分析 (journalctl) ---"
+        echo ""
 
-        if [[ -n "$AUTH_LOG" ]]; then
-            echo "========================================"
-            echo "  SSH 暴力破解統計分析"
-            echo "========================================"
-            echo ""
+        # 從 journalctl 讀取 SSH 記錄
+        SSH_JOURNAL=$(journalctl -u sshd --no-pager 2>/dev/null | grep -iE "Failed password|Accepted password")
 
-            # 失敗登入統計
-            echo "--- SSH 失敗登入次數 ---"
-            failed_count=$(grep -i "Failed password" "$AUTH_LOG" 2>/dev/null | wc -l)
-            echo "總失敗次數: ${failed_count}"
-            echo ""
+        # 失敗登入統計
+        echo "--- SSH 失敗登入次數 ---"
+        failed_count=$(echo "$SSH_JOURNAL" | grep -i "Failed password" | wc -l)
+        echo "總失敗次數: ${failed_count}"
+        echo ""
 
-            # 成功登入統計
-            echo "--- SSH 成功登入次數 ---"
-            accepted_count=$(grep -i "Accepted" "$AUTH_LOG" 2>/dev/null | wc -l)
-            echo "總成功次數: ${accepted_count}"
-            echo ""
+        # 成功登入統計
+        echo "--- SSH 成功登入次數 ---"
+        accepted_count=$(echo "$SSH_JOURNAL" | grep -i "Accepted password" | wc -l)
+        echo "總成功次數: ${accepted_count}"
+        echo ""
 
-            # 攻擊者 IP 排行榜
-            echo "--- 攻擊者 IP 排行榜 (TOP 10) ---"
-            grep -i "Failed password" "$AUTH_LOG" 2>/dev/null | awk '{print $NF}' | sed 's/[0-9]*$//' | sort | uniq -c | sort -rn | head -10 || echo "無資料"
-            echo ""
+        # 攻擊者 IP 排行榜
+        echo "--- 攻擊者 IP 排行榜 (TOP 10) ---"
+        echo "$SSH_JOURNAL" | grep -i "Failed password" | awk '{print $NF}' | sed 's/:$//' | sort | uniq -c | sort -rn | head -10 || echo "無資料"
+        echo ""
 
-            # 所有被爆破的 IP 清單
-            echo "--- 所有被掃描/爆破的 IP 清單 ---"
-            grep -i "Failed password" "$AUTH_LOG" 2>/dev/null | awk '{print $NF}' | sed 's/:$//' | sort -u | head -30 || echo "無資料"
-            echo ""
+        # 所有被爆破的 IP 清單
+        echo "--- 所有被掃描/爆破的 IP 清單 ---"
+        echo "$SSH_JOURNAL" | grep -i "Failed password" | awk '{print $NF}' | sed 's/:$//' | sort -u | head -30 || echo "無資料"
+        echo ""
 
-            # 首次攻擊時間
-            echo "--- 首次被攻擊時間 ---"
-            first_attack=$(grep -i "Failed password" "$AUTH_LOG" 2>/dev/null | head -1 | awk '{print $1, $2, $3}')
-            echo "首次: ${first_attack:-無記錄}"
-            echo ""
+        # 首次攻擊時間
+        echo "--- 首次被攻擊時間 ---"
+        first_attack=$(echo "$SSH_JOURNAL" | grep -i "Failed password" | head -1 | awk '{print $1, $2, $3}')
+        echo "首次: ${first_attack:-無記錄}"
+        echo ""
 
-            # 最近攻擊時間
-            echo "--- 最近被攻擊時間 ---"
-            last_attack=$(grep -i "Failed password" "$AUTH_LOG" 2>/dev/null | tail -1 | awk '{print $1, $2, $3}')
-            echo "最近: ${last_attack:-無記錄}"
-            echo ""
+        # 最近攻擊時間
+        echo "--- 最近被攻擊時間 ---"
+        last_attack=$(echo "$SSH_JOURNAL" | grep -i "Failed password" | tail -1 | awk '{print $1, $2, $3}')
+        echo "最近: ${last_attack:-無記錄}"
+        echo ""
 
-            # 成功登入的 IP 與時間
-            echo "========================================"
-            echo "  成功登入記錄 (可能被入侵) "
-            echo "========================================"
-            echo ""
-            echo "--- 成功登入 IP 與時間 ---"
-            grep -i "Accepted" "$AUTH_LOG" 2>/dev/null | awk '{print $1, $2, $3, $9, $11}' | head -30 || echo "無成功登入"
-            echo ""
+        # 成功登入的 IP 與時間
+        echo "========================================"
+        echo "  成功登入記錄 (可能被入侵) "
+        echo "========================================"
+        echo ""
+        echo "--- 成功登入 IP 與時間 ---"
+        echo "$SSH_JOURNAL" | grep -i "Accepted password" | awk '{print $1, $2, $3, $9, $11}' | head -30 || echo "無成功登入"
+        echo ""
 
-            # 警告：最近成功登入
-            recent_accept=$(grep -i "Accepted" "$AUTH_LOG" 2>/dev/null | tail -5)
-            if [[ -n "$recent_accept" ]]; then
-                echo "--- 最近的 5 次成功登入 ---"
-                echo "$recent_accept"
-                echo ""
-            fi
-        else
-            echo "無法找到認證日誌"
+        # 警告：最近成功登入
+        recent_accept=$(echo "$SSH_JOURNAL" | grep -i "Accepted password" | tail -5)
+        if [[ -n "$recent_accept" ]]; then
+            echo "--- 最近的 5 次成功登入 ---"
+            echo "$recent_accept"
+            echo ""
         fi
         echo ""
         echo "--- 系統錯誤與警告 ---"

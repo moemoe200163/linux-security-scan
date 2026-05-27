@@ -407,11 +407,31 @@ generate_report() {
         echo "--- 最近登入記錄 (lastlog) ---"
         lastlog | tail -20 2>/dev/null || echo "無法讀取"
         echo ""
-        echo "--- SSH 暴力破解統計分析 (journalctl) ---"
+        echo "--- SSH 暴力破解統計分析 ---"
         echo ""
 
-        # 從 journalctl 讀取 SSH 記錄（不用 -u sshd因為日誌在general journal）
-        SSH_JOURNAL=$(journalctl --no-pager 2>/dev/null | grep -iE "sshd.*Failed|sshd.*Accepted")
+        # 嘗試多種日誌來源
+        SSH_JOURNAL=""
+
+        # 1. 嘗試 journalctl (systemd)
+        if command -v journalctl &>/dev/null; then
+            SSH_JOURNAL=$(journalctl --no-pager 2>/dev/null | grep -iE "sshd.*Failed|sshd.*Accepted")
+        fi
+
+        # 2. 如果 journalctl 沒資料，嘗試 /var/log/auth.log (Debian/Ubuntu)
+        if [[ -z "$SSH_JOURNAL" ]] && [[ -f /var/log/auth.log ]]; then
+            SSH_JOURNAL=$(grep -iE "Failed password|Accepted password" /var/log/auth.log 2>/dev/null)
+        fi
+
+        # 3. 如果還是沒資料，嘗試 /var/log/secure (RHEL/CentOS)
+        if [[ -z "$SSH_JOURNAL" ]] && [[ -f /var/log/secure ]]; then
+            SSH_JOURNAL=$(grep -iE "Failed password|Accepted password" /var/log/secure 2>/dev/null)
+        fi
+
+        # 4. 嘗試 lastlog 的 SSH 失敗記錄（fallback）
+        if [[ -z "$SSH_JOURNAL" ]]; then
+            SSH_JOURNAL=$(last -f /var/log/btmp 2>/dev/null | grep "ssh" | head -50)
+        fi
 
         # 失敗登入統計
         echo "--- SSH 失敗登入次數 ---"

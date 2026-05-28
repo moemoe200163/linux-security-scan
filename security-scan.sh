@@ -179,6 +179,8 @@ install_tools() {
             fi
             ;;
         yum)
+            # 安裝 EPEL 倉庫（CentOS/RHEL 必要）
+            yum install -y epel-release 2>/dev/null || true
             yum install -y rkhunter lynis
             if [[ "${USE_GIT}" == true ]]; then
                 install_from_git
